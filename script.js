@@ -4,16 +4,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const longitudeInput = document.getElementById('longitude');
     const widgetsContainer = document.getElementById('widgetsContainer');
 
-    form.addEventListener('submit', (event) => {
+    form.addEventListener('submit', handleFormSubmit);
+
+    function handleFormSubmit(event) {
         event.preventDefault();
         const latitude = parseFloat(latitudeInput.value.trim());
         const longitude = parseFloat(longitudeInput.value.trim());
-        if (isValidLatitude(latitude) && isValidLongitude(longitude)) {
+        if (isValidCoordinates(latitude, longitude)) {
             addWeatherWidget(latitude, longitude);
         } else {
-            alert('Пожалуйста, введите правильные координаты.');
+            alert('Пожалуйста, введите правильные координаты');
         }
-    });
+    }
+
+    function isValidCoordinates(latitude, longitude) {
+        return isValidLatitude(latitude) && isValidLongitude(longitude);
+    }
 
     function isValidLatitude(latitude) {
         return !isNaN(latitude) && latitude >= -90 && latitude <= 90;
@@ -24,71 +30,82 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function addWeatherWidget(latitude, longitude) {
-        const widgetContainer = document.createElement('div');
-        widgetContainer.classList.add('widget-container');
+        const widgetContainer = createWidgetContainer();
+        const widget = createWeatherWidget();
+        const mapContainer = createMapContainer(latitude, longitude);
 
-        const closeButton = document.createElement('button');
-        closeButton.classList.add('close-button');
-        closeButton.textContent = '×';
-        closeButton.addEventListener('click', () => {
-            widgetsContainer.removeChild(widgetContainer);
-        });
-
-        const widget = document.createElement('div');
-        widget.classList.add('weather-widget');
-        widget.innerHTML = '<div class="loading">Загрузка...</div>';
-
-        const mapContainer = document.createElement('div');
-        mapContainer.classList.add('map-container');
-        const mapId = 'mapid-' + latitude + '-' + longitude;
-        mapContainer.id = mapId;
-
-        widgetContainer.appendChild(closeButton);
         widgetContainer.appendChild(widget);
         widgetContainer.appendChild(mapContainer);
 
         widgetsContainer.appendChild(widgetContainer);
 
-        getWeather(latitude, longitude, widget, mapContainer, mapId);
+        getWeather(latitude, longitude, widget, mapContainer);
     }
 
-    async function getWeather(latitude, longitude, widget, mapContainer, mapId) {
-        const apiKey = 'b65131903b0b3acd1c6f94794dad9dc8';
+    function createWidgetContainer() {
+        const container = document.createElement('div');
+        container.classList.add('widget-container');
+        const closeButton = createCloseButton(container);
+        container.appendChild(closeButton);
+        return container;
+    }
+
+    function createCloseButton(container) {
+        const button = document.createElement('button');
+        button.classList.add('close-button');
+        button.textContent = '×';
+        button.addEventListener('click', () => {
+            widgetsContainer.removeChild(container);
+        });
+        return button;
+    }
+
+    function createWeatherWidget() {
+        const widget = document.createElement('div');
+        widget.classList.add('weather-widget');
+        widget.innerHTML = '<div class="loading">Загрузка...</div>';
+        return widget;
+    }
+
+    function createMapContainer(latitude, longitude) {
+        const mapContainer = document.createElement('div');
+        mapContainer.classList.add('map-container');
+        mapContainer.id = `mapid-${latitude}-${longitude}`;
+        return mapContainer;
+    }
+
+    async function getWeather(latitude, longitude, widget, mapContainer) {
+        const apiKey = 'b65131903b0b3acd1c6f94794dad9dc8'; 
         const apiUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=metric`;
 
         try {
             const response = await fetch(apiUrl);
             const data = await response.json();
-
-            if (data.cod !== 200) {
-                throw new Error(data.message);
-            }
-            displayWeather(data, widget, latitude, longitude, mapContainer, mapId);
+            if (data.cod !== 200) throw new Error(data.message);
+            displayWeather(data, widget, latitude, longitude, mapContainer);
         } catch (error) {
-            console.error('Error fetching weather data:', error);
-            widget.innerHTML = `<p>Ошибка получения данных о погоде: ${error.message}</p>`;
+            displayError(widget, error);
         }
     }
 
-    function displayWeather(data, widget, latitude, longitude, mapContainer, mapId) {
-        if (data.cod !== 200) {
-            widget.innerHTML = `<p>${data.message}</p>`;
-            return;
-        }
-
-        const temperature = Math.round(data.main.temp);
-        const windSpeed = data.wind.speed;
-        const localTime = getLocalTime(data.timezone);
-        const weatherIcon = getWeatherIconUrl(data.weather[0].icon);
+    function displayWeather(data, widget, latitude, longitude, mapContainer) {
+        const { main, wind, weather, timezone } = data;
+        const temperature = Math.round(main.temp);
+        const windSpeed = wind.speed;
+        const weatherIcon = getWeatherIconUrl(weather[0].icon);
+        const localTime = getLocalTime(timezone);
 
         widget.innerHTML = `
-            <img src="${weatherIcon}" alt="${data.weather[0].description}">
+            <img src="${weatherIcon}" alt="${weather[0].description}">
             <p>Температура: ${temperature}°</p>
             <p>Скорость ветра: ${windSpeed} м/с</p>
             <p>Местное время: ${localTime}</p>
         `;
+        addMapToWidget(latitude, longitude, mapContainer);
+    }
 
-        addMapToWidget(latitude, longitude, mapId);
+    function displayError(widget, error) {
+        widget.innerHTML = `<p>Ошибка получения данных о погоде: ${error.message}</p>`;
     }
 
     function getWeatherIconUrl(icon) {
@@ -98,19 +115,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function getLocalTime(timezone) {
         const now = new Date();
         const utcTime = now.getTime() + now.getTimezoneOffset() * 60000;
-        const localTime = new Date(utcTime + (timezone * 1000));
+        const localTime = new Date(utcTime + timezone * 1000);
         return localTime.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
 
-    function addMapToWidget(latitude, longitude, mapId) {
-        const map = L.map(mapId).setView([latitude, longitude], 13);
+    function addMapToWidget(latitude, longitude, mapContainer) {
+        const map = L.map(mapContainer.id).setView([latitude, longitude], 13);
 
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
         L.marker([latitude, longitude]).addTo(map)
-            .bindPopup('Вы здесь.')
+            .bindPopup('Вы здесь')
             .openPopup();
     }
 });
